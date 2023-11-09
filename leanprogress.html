@@ -1,0 +1,143 @@
+---
+layout: page
+title: Lean Request Results
+group: navigation
+---
+
+<script>
+
+  if (!Array.prototype.last){
+    Array.prototype.last = function(){
+      return this[this.length - 1];
+    };
+  };
+
+  Function.prototype.extractComment = function() {
+    var startComment = "/*!";
+    var endComment = "*/";
+    var str = this.toString();
+
+    var start = str.indexOf(startComment);
+    var end = str.lastIndexOf(endComment);
+
+    return str.slice(start + startComment.length, -(str.length - end));
+  };
+
+  String.prototype.format = function() {
+    var newStr = this, i = 0;
+    while (/%s/.test(newStr))
+        newStr = newStr.replace("%s", arguments[i++])
+
+    return newStr;
+  }
+
+  var accTmpl = function() { /*!
+  <div class="panel panel-default">
+    <div class="panel-heading">
+      <h4 class="panel-title">
+      <i data-toggle="tooltip" title="%s" data-placement="top" class="fa fa-%s"></i>
+      <a data-toggle="collapse" data-parent="#accordion" href="#%s">
+      %s
+      </a>
+      </h4>
+    </div>
+    <div id="%s" class="panel-collapse collapse">
+      <div class="panel-body">
+      %s
+      </div>
+    </div>
+  </div>*/}.extractComment();
+
+  function param(name){
+   if(name=(new RegExp('[?&]'+encodeURIComponent(name)+'=([^&]*)')).exec(location.search))
+      return decodeURIComponent(name[1]);
+  }
+
+$(document).ready(function() {
+
+  var req_id = param('id');
+
+  if (req_id == null || req_id.length != 40) {
+    $("#progress").text("No request specified or invalid request id");
+    return;
+  }
+
+  $.ajax({
+    url: "http://ghtorrent.org/lean/requests/" + req_id,
+    success: results,
+    error: function(xhr, status, exception) {
+       $("#progress").text("Invalid request id");
+    }
+  });
+
+  function results(data, status, xhr) {
+
+    function idGen() {
+      return (Math.random() + 1).toString(36).substr(2, 5);
+    }
+
+    var toAppend = Object.keys(data).reduce(function(acc, project, x, y) {
+
+      var id = idGen();
+
+      var content = data[project].items.reduce(function(acc, item, x, y) {
+        var itemFmt = '<li><i class="fa-li fa fa-%s"></i>%s: %s</li>';
+
+        var d = new Date(item.created_at * 1000);
+        var ts = "%s/%s/%s %s:%s:%s".format(d.getFullYear(), d.getMonth() + 1,
+          d.getDay(), d.getHours(), d.getMinutes(), d.getSeconds());
+
+        var icon = "";
+        if (item.status == "ok"){
+          icon = "check-square";
+        } else {
+          icon = "frown-o warncolor";
+        }
+
+        return (acc + itemFmt.format(icon, ts, item.item));
+      }, '<ul class="fa-ul">');
+      content = content + "</ul>";
+
+      if (data[project].req_status.status == "finished") {
+        statusIcon = "check-circle";
+      } else if (data[project].req_status.status == "working") {
+        statusIcon = "cogs";
+      } else if (data[project].req_status.status == "stopped") {
+        statusIcon = "stop";
+      } else if (data[project].req_status.status == "error") {
+        statusIcon = "frown-o warncolor";
+      } else  {
+        statusIcon = "question-circle";
+      }
+
+      var tooltip = "status: %s, last update: %s";
+      var updts = new Date(data[project].req_status.created_at * 1000);
+      var upd = "%s/%s/%s %s:%s:%s".format(updts.getFullYear(),
+            updts.getMonth() + 1, updts.getDay(), updts.getHours(),
+            updts.getMinutes(), updts.getSeconds());
+      tooltip = tooltip.format(data[project].req_status.status, upd);
+
+      return (acc + accTmpl.format(tooltip, statusIcon, id, project, id, content));
+    }, "");
+
+    $("#accordion").append(toAppend);
+    $("#expander").show();
+    $('.fa').tooltip();
+  }
+
+  $("#expander").click(function() {
+     $('.panel-collapse').collapse({'toggle': true, 'parent': '#accordion'});
+  });
+
+});
+</script>
+
+<a class="btn btn-primary" id="expander" style="display:none"><i class="fa fa-expand fa-fw"></i>Expand all</a>
+
+<div class="panel-group" id="accordion">
+  <style type = "text/css" scoped>
+    .warncolor {color:red;}
+  </style>
+</div>
+
+<div id="#progress"></div>
